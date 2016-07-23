@@ -59,3 +59,10 @@ func TestRunTask(t *testing.T) {
 	assertEquals(t, runner.path, "vim", "Parse path correctly")
 	assertEquals(t, runner.args, []string{"simple.txt", "something"}, "Replce args correctly")
 }
+
+func TestRunnerImpl(t *testing.T) {
+	runner := NewRunner()
+	runner.Run("echo", []string{"Hello"})
+	output := <- runner.Stdout()
+	assertEquals(t, "Hello", output, "Should say hello")
+}

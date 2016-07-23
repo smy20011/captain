@@ -3,6 +3,9 @@ package manager
 import (
 	"regexp"
 	"strings"
+	"os/exec"
+	"bufio"
+	"io"
 )
 
 type Task interface {
@@ -105,14 +108,14 @@ func NewTask(template string, inputs []string, outputs map[string]string) *TaskI
 	splitted := strings.Split(template, " ")
 	path := splitted[0]
 	args := splitted[1:]
-	filters := make(map[string]*regexp.Regexp)
-	outputMap := make(map[string]string)
+	filters := make(map[string]*regexp.Regexp, len(outputs))
+	outputMap := make(map[string]string, len(outputs))
 	for k, v := range outputs {
 		reg:= regexp.MustCompile(v)
 		filters[k] = reg
 		outputMap[k] = ""
 	}
-	inputMap := make(map[string]string)
+	inputMap := make(map[string]string, len(inputs))
 	for _, k := range inputs {
 		inputMap[k] = ""
 	}
@@ -123,4 +126,39 @@ func NewTask(template string, inputs []string, outputs map[string]string) *TaskI
 		args:      args,
 		filters:   filters,
 	}
+}
+
+type RunnerImpl struct {
+	cmd *exec.Cmd
+	output chan string
+}
+
+func (r *RunnerImpl) Run(path string, args []string) {
+	r.cmd = exec.Command(path, args...)
+	reader, err := r.cmd.StdoutPipe()
+	if err != nil {
+		panic(err)
+	}
+	err = r.cmd.Start()
+	if err != nil {
+		panic(err)
+	}
+	r.output = make(chan string)
+	go r.redirectOuput(reader)
+} 
+
+func (r *RunnerImpl) redirectOuput(reader io.Reader) {
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		r.output <- scanner.Text()
+	}
+	close(r.output)
+}
+
+func (r *RunnerImpl) Stdout() (chan string) {
+	return r.output
+}
+
+func NewRunner() Runner {
+	return &RunnerImpl{}
 }
