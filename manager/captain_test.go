@@ -1,8 +1,8 @@
 package manager
 
 import (
-	"testing"
 	"reflect"
+	"testing"
 )
 
 func assert(t *testing.T, pred bool, desp string) {
@@ -28,16 +28,16 @@ func TestCreateTask(t *testing.T) {
 
 type DummyRunner struct {
 	output chan string
-	path string
-	args []string
+	path   string
+	args   []string
 }
 
-func (r *DummyRunner) Run(path string, args []string) {
+func (r *DummyRunner) Start(path string, args []string) {
 	r.path = path
 	r.args = args
 }
 
-func (r *DummyRunner) Stdout() (chan string) {
+func (r *DummyRunner) Stdout() chan string {
 	return r.output
 }
 
@@ -62,7 +62,7 @@ func TestRunTask(t *testing.T) {
 
 func TestRunnerImpl(t *testing.T) {
 	runner := NewRunner()
-	runner.Run("echo", []string{"Hello"})
-	output := <- runner.Stdout()
+	runner.Start("echo", []string{"Hello"})
+	output := <-runner.Stdout()
 	assertEquals(t, "Hello", output, "Should say hello")
 }

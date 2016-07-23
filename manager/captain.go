@@ -1,11 +1,11 @@
 package manager
 
 import (
-	"regexp"
-	"strings"
-	"os/exec"
 	"bufio"
 	"io"
+	"os/exec"
+	"regexp"
+	"strings"
 )
 
 type Task interface {
@@ -23,8 +23,8 @@ type Pair interface {
 }
 
 type Runner interface {
-	Run(path string, args []string)
-	Stdout() (chan string)
+	Start(path string, args []string)
+	Stdout() chan string
 }
 
 type MapPair struct {
@@ -94,10 +94,10 @@ func (t *TaskImpl) Run(runner Runner) {
 			t.args[i] = t.inputMap[varname]
 		}
 	}
-	runner.Run(t.path, t.args)
+	runner.Start(t.path, t.args)
 	for output := range runner.Stdout() {
 		for key, regex := range t.filters {
-			if match := regex.FindString(output) ; match != "" {
+			if match := regex.FindString(output); match != "" {
 				t.outputMap[key] = match
 			}
 		}
@@ -111,7 +111,7 @@ func NewTask(template string, inputs []string, outputs map[string]string) *TaskI
 	filters := make(map[string]*regexp.Regexp, len(outputs))
 	outputMap := make(map[string]string, len(outputs))
 	for k, v := range outputs {
-		reg:= regexp.MustCompile(v)
+		reg := regexp.MustCompile(v)
 		filters[k] = reg
 		outputMap[k] = ""
 	}
@@ -129,11 +129,11 @@ func NewTask(template string, inputs []string, outputs map[string]string) *TaskI
 }
 
 type RunnerImpl struct {
-	cmd *exec.Cmd
+	cmd    *exec.Cmd
 	output chan string
 }
 
-func (r *RunnerImpl) Run(path string, args []string) {
+func (r *RunnerImpl) Start(path string, args []string) {
 	r.cmd = exec.Command(path, args...)
 	reader, err := r.cmd.StdoutPipe()
 	if err != nil {
@@ -145,7 +145,7 @@ func (r *RunnerImpl) Run(path string, args []string) {
 	}
 	r.output = make(chan string)
 	go r.redirectOuput(reader)
-} 
+}
 
 func (r *RunnerImpl) redirectOuput(reader io.Reader) {
 	scanner := bufio.NewScanner(reader)
@@ -155,7 +155,7 @@ func (r *RunnerImpl) redirectOuput(reader io.Reader) {
 	close(r.output)
 }
 
-func (r *RunnerImpl) Stdout() (chan string) {
+func (r *RunnerImpl) Stdout() chan string {
 	return r.output
 }
 
