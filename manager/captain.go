@@ -1,6 +1,9 @@
 package manager
 
 import (
+	"bufio"
+	"io"
+	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -8,15 +11,20 @@ import (
 type Task interface {
 	Inputs() []Pair
 	InputOf(name string) Pair
-	Outputs() Pair
+	Outputs() []Pair
 	OutputOf(name string) Pair
-	Run()
+	Run(runner Runner)
 }
 
 type Pair interface {
 	Key() string
 	Value() string
 	Set(val string)
+}
+
+type Runner interface {
+	Start(path string, args []string)
+	Stdout() chan string
 }
 
 type MapPair struct {
@@ -74,25 +82,40 @@ func (t *TaskImpl) OutputOf(name string) Pair {
 	return NewMapPair(t.outputMap, name)
 }
 
-func (t *TaskImpl) Run() {
-	panic("not implemented")
+func (t *TaskImpl) Run(runner Runner) {
+	for k, v := range t.inputMap {
+		if v == "" {
+			panic("Parameter " + k + " not fulfilled")
+		}
+	}
+	for i, arg := range t.args {
+		if strings.HasPrefix(arg, "$") {
+			varname := strings.TrimPrefix(arg, "$")
+			t.args[i] = t.inputMap[varname]
+		}
+	}
+	runner.Start(t.path, t.args)
+	for output := range runner.Stdout() {
+		for key, regex := range t.filters {
+			if match := regex.FindString(output); match != "" {
+				t.outputMap[key] = match
+			}
+		}
+	}
 }
 
 func NewTask(template string, inputs []string, outputs map[string]string) *TaskImpl {
 	splitted := strings.Split(template, " ")
 	path := splitted[0]
 	args := splitted[1:]
-	filters := make(map[string]*regexp.Regexp)
-	outputMap := make(map[string]string)
+	filters := make(map[string]*regexp.Regexp, len(outputs))
+	outputMap := make(map[string]string, len(outputs))
 	for k, v := range outputs {
-		if reg, err := regexp.Compile(v); err == nil {
-			filters[k] = reg
-			outputMap[k] = ""
-		} else {
-			panic(err)
-		}
+		reg := regexp.MustCompile(v)
+		filters[k] = reg
+		outputMap[k] = ""
 	}
-	inputMap := make(map[string]string)
+	inputMap := make(map[string]string, len(inputs))
 	for _, k := range inputs {
 		inputMap[k] = ""
 	}
@@ -103,4 +126,39 @@ func NewTask(template string, inputs []string, outputs map[string]string) *TaskI
 		args:      args,
 		filters:   filters,
 	}
+}
+
+type RunnerImpl struct {
+	cmd    *exec.Cmd
+	output chan string
+}
+
+func (r *RunnerImpl) Start(path string, args []string) {
+	r.cmd = exec.Command(path, args...)
+	reader, err := r.cmd.StdoutPipe()
+	if err != nil {
+		panic(err)
+	}
+	err = r.cmd.Start()
+	if err != nil {
+		panic(err)
+	}
+	r.output = make(chan string)
+	go r.redirectOuput(reader)
+}
+
+func (r *RunnerImpl) redirectOuput(reader io.Reader) {
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		r.output <- scanner.Text()
+	}
+	close(r.output)
+}
+
+func (r *RunnerImpl) Stdout() chan string {
+	return r.output
+}
+
+func NewRunner() Runner {
+	return &RunnerImpl{}
 }
