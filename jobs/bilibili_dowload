@@ -1,0 +1,4 @@
+#!/bin/bash
+temp_folder=$(mktemp -d)
+cd $temp_folder; you-get $1
+cd $temp_folder; smbclient -N \\\\192.168.0.1\\USB_Storage -c "prompt; mput *"
